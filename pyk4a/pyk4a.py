@@ -116,12 +116,37 @@ class PyK4A:
     def get_capture2(
         self,
         skip_old_atol_ms=None, parallel_bt=True,
-        get_bt=True, get_depth=True, get_color=True,
+        get_bt=True, get_depth=False, get_color=True,
         get_color_timestamp=True, get_depth_timestamp=True,
-        undistort_color=True, undistort_depth=True, undistort_bt=True,
+        undistort_color=False, undistort_depth=True, undistort_bt=False,
         transformed_depth=True,
         timeout=TIMEOUT_WAIT_INFINITE, verbose=0
     ):
+        # values
+        #     print("[get_capture2] called with arguments:")
+        #     print({
+        #         "skip_old_atol_ms": skip_old_atol_ms,         # None 
+        #         "parallel_bt": parallel_bt,                   # True
+        #         "get_bt": get_bt,                             # True
+        #         "get_depth": get_depth,                       # False
+        #         "get_color": get_color,                       # True
+        #         "get_color_timestamp": get_color_timestamp,   # True
+        #         "get_depth_timestamp": get_depth_timestamp,   # True
+        #         "undistort_color": undistort_color,           # False
+        #         "undistort_depth": undistort_depth,           # True
+        #         "undistort_bt": undistort_bt,                 # False
+        #         "transformed_depth": transformed_depth,       #True
+        #         "timeout": timeout,                           # -1
+        #         "verbose": verbose,                           
+        #     })
+        
+        """
+        parallel_bt: Body Tracking 연산을 병렬로
+        undistort_ : 카메라 렌즈 왜곡 보정
+        transformed_depth : Depth 를 Color 카메라 로 변환
+        """
+
+
         self.counter += 1
         skip_count = 0
         while True:
@@ -130,46 +155,46 @@ class PyK4A:
             self._verify_error(res)
             t1 = time.time()
 
-            if skip_old_atol_ms is None or (t1 - t0) * 1000 > skip_old_atol_ms:
+            if skip_old_atol_ms is None or (t1 - t0) * 1000 > skip_old_atol_ms: # t 설정값보다 짧은경우, 오래된 프레임을 가져온것으로 간주
                 break
             else:
                 skip_count += 1
 
-        result = dict()
-        result['skip_count'] = skip_count
-        if get_color:
-            if undistort_color:
+        result = dict() # 결과를 담을 딕셔너리
+        result['skip_count'] = skip_count # 몇 프레임을 스킵했는지 기록
+        if get_color: # True
+            if undistort_color: # F  왜곡 보정
                 k4a_module.device_get_color_image_undistorted_start()
             else:
                 k4a_module.device_get_color_image_start()
-        if get_depth:
+        if get_depth: # False
             if undistort_depth:
                 if transformed_depth:
                     k4a_module.device_get_transformed_depth_image_undistorted_start()
                 else:
                     k4a_module.device_get_depth_image_undistorted_start()
             else:
-                if transformed_depth:
+                if transformed_depth: # True 
                     k4a_module.device_get_transformed_depth_image_start()
                 else:
                     raise Exception('get depth_image not implemented')
-        if parallel_bt:
-            if get_bt:
-                if undistort_bt:
+        if parallel_bt: # T 이미지 처리와 신체 추적 알고리즘 동시
+            if get_bt: # T
+                if undistort_bt: # F
                     k4a_module.device_get_pose_data_undistorted_start()
                 else:
                     k4a_module.device_get_pose_data_start()
             t2 = time.time()
 
-        suff = lambda x: '_undistorted' if x else ''
-        if get_depth:
+        suff = lambda x: '_undistorted' if x else '' # 결과 딕셔너리 키 이름 뒤에 접미사를 만드는 람다 함수
+        if get_depth: # False
             if undistort_depth:
-                if transformed_depth:
+                if transformed_depth: 
                     depth_result = k4a_module.device_get_transformed_depth_image_undistorted_join()
                 else:
                     depth_result = k4a_module.device_get_depth_image_undistorted_join()
             else:
-                if transformed_depth:
+                if transformed_depth: # T
                     depth_result = k4a_module.device_get_transformed_depth_image_join()
                 else:
                     raise Exception('get depth_image not implemented')
@@ -202,11 +227,12 @@ class PyK4A:
                 result[f'body_index_map{suff(undistort_bt)}'] = body_index_map_result
         t3 = time.time()
 
-        self.timings['get_capture2_0'].append(t1 - t0)
-        self.timings['get_capture2_1'].append(t2 - t1)
-        self.timings['get_capture2_2'].append(t3 - t2)
+        self.timings['get_capture2_0'].append(t1 - t0) # 캡쳐 대기 시간
+        self.timings['get_capture2_1'].append(t2 - t1) # 이미지 처리 시작 ~ BT 시작 사이
+        self.timings['get_capture2_2'].append(t3 - t2) # 작업 완료 대기  시간
         self.skip_counts.append(skip_count)
 
+        # 주기 마다 콘솔에 FPS 출력
         if verbose > 0 and self.counter % verbose == 0:
             timings_s = 'k4a timings:\n'
             min_frames = 10
@@ -226,8 +252,84 @@ class PyK4A:
 
             if len(durations) > 0:
                 print(timings_s)
+            
         
         return result
+    
+    # def get_imu_sample(self, timeout=TIMEOUT_WAIT_INFINITE):
+    #     """
+    #     IMU(가속도계, 자이로스코프) 데이터를 가져옵니다.
+    #     Returns:
+    #         dict: 'temperature', 'acc_sample', 'acc_timestamp', 'gyro_sample', 'gyro_timestamp'
+    #     """
+    #     # k4a_module 내부에 해당 바인딩이 되어 있다고 가정합니다.
+    #     # 만약 pyk4a 패키지 버전에 따라 이름이 다를 수 있으나, 보통 device_get_imu_sample 입니다.
+    #     print(dir(k4a_module))
+    #     res, imu_sample = k4a_module.device_get_imu_sample(timeout)
+    #     self._verify_error(res)
+    #     return imu_sample
+    
+    def get_imu_rotation_matrix(self):
+        """
+        C++의 make_R 함수를 Python으로 정확히 이식한 것.
+        IMU 가속도 데이터를 이용해 카메라의 기울기를 보정하는 4x4 회전 행렬(_R)을 반환합니다.
+        """
+        # 1. IMU 샘플 가져오기 (self 이용)
+        imu_data = self.get_imu_sample()
+        
+        # 가속도 데이터 추출 (x, y, z)
+        acc = np.array(imu_data['acc_sample'], dtype=np.float32)
+        
+        # 2. 중력 가속도 벡터 정규화
+        acc_norm = np.linalg.norm(acc)
+        if acc_norm == 0:
+            return np.eye(4) # 에러 방지용 단위 행렬
+            
+        gravity = acc / acc_norm
+        
+        # 3. 회전 각도 계산 (C++ imuToRotaionAngle 로직 준수)
+        # C++ accPhi: Y, Z 성분 -> Z축 회전에 사용됨
+        acc_phi = np.arctan2(gravity[1], gravity[2]) 
+        
+        # C++ accTheta: X, YZ평면 -> X축 회전에 사용됨
+        acc_theta = np.arctan2(gravity[0], np.sqrt(gravity[1]**2 + gravity[2]**2))
+
+        # C++ 코드의 -rotationAngle 반영 (부호 반대)
+        theta_z = -acc_phi    # Z축 회전 각도
+        theta_x = -acc_theta  # X축 회전 각도
+
+        # 4. 회전 행렬 생성
+        # Z축 회전 행렬 (C++ rotZ)
+        # [[c, -s, 0], [s, c, 0], ...]
+        cz, sz = np.cos(theta_z), np.sin(theta_z)
+        Rz = np.array([
+            [cz, -sz, 0, 0],
+            [sz,  cz, 0, 0],
+            [0,   0,  1, 0],
+            [0,   0,  0, 1]
+        ], dtype=np.float32)
+        
+        # X축 회전 행렬 (C++ rotX)
+        # [[1, 0, 0], [0, c, -s], ...]
+        cx, sx = np.cos(theta_x), np.sin(theta_x)
+        Rx = np.array([
+            [1, 0,   0,  0],
+            [0, cx, -sx, 0],
+            [0, sx,  cx, 0],
+            [0, 0,   0,  1]
+        ], dtype=np.float32)
+        
+        # 5. 좌표축 뒤집기 (Coordinate System Flip)
+        # C++: R << -1, 0, 0, 0,  0, -1, 0, 0 ...
+        Flip = np.eye(4, dtype=np.float32)
+        Flip[0, 0] = -1
+        Flip[1, 1] = -1
+        
+        # 6. 최종 행렬 결합: R = Flip * Rz * Rx
+        R_total = Flip @ Rz @ Rx
+        
+        return R_total
+
 
     @property
     def sync_jack_status(self) -> Tuple[bool, bool]:

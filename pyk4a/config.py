@@ -67,6 +67,13 @@ class Config:
                  subordinate_delay_off_master_usec=0,
                  disable_streaming_indicator=False,
                  gpu_id=0):
+        
+        """
+        성능
+        color_resolutuin RES_720P(0.02s)  RES_1536P(0.)
+        depth_mode 정확도:  NFOV_UNBINNED > NFOV_2X2BINNED > WFOV_2X2BINNED
+        """
+
         self._color_resolution = color_resolution
         self._depth_mode = depth_mode
         self._camera_fps = camera_fps
